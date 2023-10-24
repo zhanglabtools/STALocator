@@ -32,11 +32,11 @@ acquisition of genome-wide ST data, addressing this limitation effectively.
 ![](./STALOC_overview.png)
 
 ## Software dependencies
-scanpy==1.8.2
+scanpy>=1.8.2
 
-torch==1.8.0
+torch>=1.8.0
 
-torchvision==0.9.0
+torchvision>=0.9.0
 
 ## Installation
 After download STALOC from Github, you can install STALOC via
@@ -45,3 +45,17 @@ cd STALOC-main
 python setup.py build
 python setup.py install
 ```
+
+## Tutorials
+The following are detailed tutorials. Some related additional files can be downloaded [here](https://drive.google.com/drive/folders/1LX6hlI1gWtflLbl-hkghAtUu0aQG95Gi).
+
+1. [Simulation experiment](./tutorials/T1_simulation_experiment.ipynb)
+
+2. Localization of human brain [M1](./tutorials/T2_human_M1_DLPFC.ipynb) and [MTG](./tutorials/T2_human_MTG_DLPFC.ipynb) cells on human DLPFC sections
+
+3. [Localization of human SCC cells on tissue sections](./tutorials/T3_human_SCC.ipynb)
+
+4. [Data enhancement of mouse hippocampus Slide-seq dataset](./tutorials/T4_mouse_hippo_slideseq.ipynb)
+
+5. [Data extension of mouse visual cortex STARmap dataset](./tutorials/T5_mouse_visual_cortex_starmap.ipynb)
+
