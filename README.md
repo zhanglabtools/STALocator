@@ -51,7 +51,7 @@ The following are detailed tutorials. Some related additional files can be downl
 
 1. [Simulation experiment](./tutorials/T1_simulation_experiment.ipynb)
 
-2. Localization of human brain [M1](./tutorials/T2_human_M1_DLPFC.ipynb) and [MTG](./tutorials/T2_human_MTG_DLPFC.ipynb) cells on human DLPFC sections
+2. Localization of human brain [MTG](./tutorials/T2_human_MTG_DLPFC.ipynb) and [M1](./tutorials/T2_human_M1_DLPFC.ipynb) cells on human DLPFC sections
 
 3. [Localization of human SCC cells on tissue sections](./tutorials/T3_human_SCC.ipynb)
 
