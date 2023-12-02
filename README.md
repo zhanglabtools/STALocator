@@ -31,20 +31,28 @@ acquisition of genome-wide ST data, addressing this limitation effectively.
 
 ![](./STALOC_overview.png)
 
+## Prerequisites
+It is recommended to use a Python version between `3.7` and `3.9`.
+
 ## Software dependencies
-scanpy>=1.8.2
+scanpy>=1.8.2,<=1.9.6
 
-torch>=1.8.0
+torch>=1.8.0,<=1.13.0
 
-torchvision>=0.9.0
+torchvision>=0.9.0,<=1.14.0
+
+In addition, if you choose to use GPU, the versions of torch and torchvision 
+need to be compatible with the version of CUDA.
 
 ## Installation
-After download STALOC from Github, you can install STALOC via
+After download STALOC from [Github](https://github.com/zhanglabtools/STALOC), you can install STALOC via
 ```
 cd STALOC-main
 python setup.py build
 python setup.py install
 ```
+In addition, if you choose to install STALOC in a virtual environment, 
+you must install the imageio and igraph packages first. 
 
 ## Tutorials
 The following are detailed tutorials. Some related additional files can be downloaded [here](https://drive.google.com/drive/folders/1LX6hlI1gWtflLbl-hkghAtUu0aQG95Gi).
