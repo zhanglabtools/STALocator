@@ -24,10 +24,8 @@ class Model(object):
                  npcs = 30, n_latent = 20, n_coord = 2, sf_coord = 12000, location = "spatial", rad_cutoff = None,
                  lambdaGAN = 1.0, lambdacos = 20.0, lambdaAE = 10.0, lambdaLA = 10.0, lambdaSWD = 50.0,
                  lambdalat = 1.0, lambdarec = 0.01,
-                 model_path = "models", data_path = "data", result_path = "results"):
-
-        # add device
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+                 model_path = "models", data_path = "data", result_path = "results",
+                 ot = True, verbose = True, device="cpu"):
 
         # set random seed
         torch.manual_seed(seed)
@@ -36,7 +34,11 @@ class Model(object):
             torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.benchmark = True
 
-        assert (resolution in ['low', 'high'])
+        if resolution not in ['low', 'high']:
+            raise ValueError("Resolution must be either 'low' or 'high'.")
+
+        if resolution == "high" and not ot:
+            raise ValueError("If resolution is 'high', ot must be True.")
 
         self.resolution = resolution
         self.batch_size = batch_size
@@ -68,6 +70,9 @@ class Model(object):
         self.data_path = data_path
         self.result_path = result_path
 
+        self.ot = ot
+        self.verbose = verbose
+        self.device = device
 
     def preprocess(self,
                    adata_A_input, # anndata object of scRNA-seq data
@@ -82,7 +87,8 @@ class Model(object):
         adata_A = adata_A_input.copy()
         adata_B = adata_B_input.copy()
 
-        print("Finding highly variable genes...")
+        if self.verbose:
+            print("Finding highly variable genes...")
         sc.pp.highly_variable_genes(adata_A, flavor='seurat_v3', n_top_genes=hvg_num)
         sc.pp.highly_variable_genes(adata_B, flavor='seurat_v3', n_top_genes=hvg_num)
         hvg_A = adata_A.var[adata_A.var.highly_variable == True].sort_values(by="highly_variable_rank").index
@@ -91,7 +97,8 @@ class Model(object):
         if len(hvg_total) < 100:
             raise ValueError("The total number of highly variable genes is smaller than 100 (%d). Try to set a larger hvg_num." % len(hvg_total))
 
-        print("Normalizing and scaling...")
+        if self.verbose:
+            print("Normalizing and scaling...")
         sc.pp.normalize_total(adata_A, target_sum=1e4)
         sc.pp.log1p(adata_A)
         adata_A = adata_A[:, hvg_total]
@@ -104,7 +111,8 @@ class Model(object):
 
         adata_total = adata_A.concatenate(adata_B, index_unique=None)
 
-        print("Dimensionality reduction via PCA...")
+        if self.verbose:
+            print("Dimensionality reduction via PCA...")
         pca = PCA(n_components=self.npcs, svd_solver="arpack", random_state=0)
         adata_total.obsm["X_pca"] = pca.fit_transform(adata_total.X)
 
@@ -122,9 +130,10 @@ class Model(object):
             np.save(os.path.join(self.data_path, "lowdim_A.npy"), self.emb_A)
             np.save(os.path.join(self.data_path, "lowdim_B.npy"), self.emb_B)
 
-    def train(self, num_projections=500, metric='correlation', reg=0.1, numItermax=10, device='cuda'):
+    def train(self, num_projections=500, metric='correlation', reg=0.1, numItermax=10):
         begin_time = time.time()
-        print("Begining time: ", time.asctime(time.localtime(begin_time)))
+        if self.verbose:
+            print("Begining time: ", time.asctime(time.localtime(begin_time)))
         self.E_A = encoder(self.npcs, self.n_latent).to(self.device)
         self.E_B = encoder(self.npcs, self.n_latent).to(self.device)
         self.G_A = generator(self.npcs, self.n_latent).to(self.device)
@@ -151,9 +160,10 @@ class Model(object):
         N_A = self.emb_A.shape[0]
         N_B = self.emb_B.shape[0]
 
-        plan = np.ones(shape=(N_A, N_B))
-        plan = plan / (self.batch_size * self.batch_size)
-        plan = torch.from_numpy(plan).float().to(self.device)
+        if self.ot:
+            plan = np.ones(shape=(N_A, N_B))
+            plan = plan / (self.batch_size * self.batch_size)
+            plan = torch.from_numpy(plan).float().to(self.device)
 
         for j in range(self.train_epoch):
             index_A = np.random.choice(np.arange(N_A), size=self.batch_size)
@@ -203,13 +213,14 @@ class Model(object):
                 loss_LA_BtoA = torch.mean((z_B - z_BtoA) ** 2)
                 loss_LA = loss_LA_AtoB + loss_LA_BtoA
 
-                loss_SWD = sliced_wasserstein_distance(z_A, z_B, num_projections=num_projections, device=device)
+                loss_SWD = sliced_wasserstein_distance(z_A, z_B, num_projections=num_projections, device=self.device)
 
-                plan_tmp = trans_plan_b(z_A, z_B, metric=metric, reg=reg, numItermax=numItermax, device=device)
+                if self.ot:
+                    plan_tmp = trans_plan_b(z_A, z_B, metric=metric, reg=reg, numItermax=numItermax, device=self.device)
 
-                coord_list = [[i, j] for i in index_A for j in index_B]
-                coord_list = np.array(coord_list)
-                plan[coord_list[:, 0], coord_list[:, 1]] = plan_tmp.reshape([self.batch_size * self.batch_size, ])
+                    coord_list = [[i, j] for i in index_A for j in index_B]
+                    coord_list = np.array(coord_list)
+                    plan[coord_list[:, 0], coord_list[:, 1]] = plan_tmp.reshape([self.batch_size * self.batch_size, ])
 
                 if j <= 5:
                     # Warm-up
@@ -226,13 +237,14 @@ class Model(object):
                 optimizer_G.step()
 
                 if not j % 500:
-                    print("step %d, total_loss=%.4f, loss_D=%.4f, loss_GAN=%.4f, loss_AE=%.4f, loss_cos=%.4f, loss_LA=%.4f, loss_SWD=%.4f"
-                            % (j, loss_G, loss_D, loss_GAN, loss_AE, loss_cos, loss_LA, loss_SWD))
+                    if self.verbose:
+                        print("step %d, total_loss=%.4f, loss_D=%.4f, loss_GAN=%.4f, loss_AE=%.4f, loss_cos=%.4f, loss_LA=%.4f, loss_SWD=%.4f"
+                              % (j, loss_G, loss_D, loss_GAN, loss_AE, loss_cos, loss_LA, loss_SWD))
 
             else:
                 optimizer_S.zero_grad()
 
-                loss_lat = loss1(m_B, c_B) + 0.1 * sliced_wasserstein_distance(m_B, c_B, num_projections=num_projections, device=device)
+                loss_lat = loss1(m_B, c_B) + 0.1 * sliced_wasserstein_distance(m_B, c_B, num_projections=num_projections, device=self.device)
                 loss_rec = loss2(s_Brecon, z_B) + 0.1 * loss1(s_Brecon, z_B)
 
                 loss_S = self.lambdalat * loss_lat + self.lambdarec * loss_rec
@@ -240,15 +252,19 @@ class Model(object):
                 optimizer_S.step()
 
                 if not j % 500:
-                    print("step %d, loss_lat=%.4f, loss_rec=%.4f" % (j, loss_lat, loss_rec))
+                    if self.verbose:
+                        print("step %d, loss_lat=%.4f, loss_rec=%.4f" % (j, loss_lat, loss_rec))
 
 
         end_time = time.time()
-        print("Ending time: ", time.asctime(time.localtime(end_time)))
+        if self.verbose:
+            print("Ending time: ", time.asctime(time.localtime(end_time)))
         self.train_time = end_time - begin_time
-        print("Training takes %.2f seconds" % self.train_time)
+        if self.verbose:
+            print("Training takes %.2f seconds" % self.train_time)
 
-        self.plan = plan.detach().cpu().numpy()
+        if self.ot:
+            self.plan = plan.detach().cpu().numpy()
 
         if not os.path.exists(self.model_path):
             os.makedirs(self.model_path)
@@ -335,12 +351,15 @@ class Model(object):
                 self.adata_A_keep.uns["spatial"] = self.adata_B_input.uns["spatial"]
                 self.adata_A_keep.obsm["spatial"] = self.adata_A_keep.obsm["loc"]
             self.adata_A_keep.write(os.path.join(self.result_path, "adata_sc_keep.h5ad"))
-            print("Localized scRNA-seq dataset has been saved!")
+            if self.verbose:
+                print("Localized scRNA-seq dataset has been saved!")
 
         # save OT plan
-        self.plan_df = pd.DataFrame(self.plan, index=self.adata_A_input.obs.index, columns=self.adata_B_input.obs.index)
-        self.plan_df.index = self.plan_df.index.values
-        self.plan_df.to_csv(os.path.join(self.result_path, "trans_plan.csv"))
+        if self.ot:
+            self.plan_df = pd.DataFrame(self.plan, index=self.adata_A_input.obs.index,
+                                        columns=self.adata_B_input.obs.index)
+            self.plan_df.index = self.plan_df.index.values
+            self.plan_df.to_csv(os.path.join(self.result_path, "trans_plan.csv"))
 
         # save latent with batch and celltype
         self.latent_df = pd.DataFrame(self.latent, index=self.adata_total.obs.index)
@@ -350,15 +369,17 @@ class Model(object):
         self.latent_df.to_csv(os.path.join(self.result_path, "latent.csv"))
 
         # save cell type scores
-        sc_celltype = self.latent_df[self.latent_df["batch"] == "scRNA-seq"]
-        sc_celltype = sc_celltype["cell_type"].astype("str")
-        cluster_name = sc_celltype.unique()
-        self.cluster_score = np.zeros(shape=(len(cluster_name), self.adata_B_input.shape[0]))
-        self.cluster_score = pd.DataFrame(self.cluster_score, index=cluster_name, columns=self.adata_B_input.obs.index)
-        for i in cluster_name:
-            self.cluster_score.loc[i, :] = np.mean(self.plan[np.where(sc_celltype == i), :][0], axis=0)
-        self.cluster_score = self.cluster_score.T
-        self.cluster_score.to_csv(os.path.join(self.result_path, "cluster_score.csv"))
+        if self.ot:
+            sc_celltype = self.latent_df[self.latent_df["batch"] == "scRNA-seq"]
+            sc_celltype = sc_celltype["cell_type"].astype("str")
+            cluster_name = sc_celltype.unique()
+            self.cluster_score = np.zeros(shape=(len(cluster_name), self.adata_B_input.shape[0]))
+            self.cluster_score = pd.DataFrame(self.cluster_score, index=cluster_name,
+                                              columns=self.adata_B_input.obs.index)
+            for i in cluster_name:
+                self.cluster_score.loc[i, :] = np.mean(self.plan[np.where(sc_celltype == i), :][0], axis=0)
+            self.cluster_score = self.cluster_score.T
+            self.cluster_score.to_csv(os.path.join(self.result_path, "cluster_score.csv"))
 
         # save transfer label, maximum probability
         if self.resolution == "high":
@@ -378,7 +399,8 @@ class Model(object):
             self.data_pm = self.plan_norm @ self.adata_A_input.X
             self.adata_ST_pm = sc.AnnData(X=self.data_pm, obs=self.adata_B_input.obs, var=self.adata_A_input.var, obsm=self.adata_B_input.obsm)
             self.adata_ST_pm.write(os.path.join(self.result_path, "adata_ST_pm.h5ad"))
-            print("Enhanced ST dataset has been saved!")
+            if self.verbose:
+                print("Enhanced ST dataset has been saved!")
 
         if D_score:
             self.D_A = discriminator(self.npcs).to(self.device)

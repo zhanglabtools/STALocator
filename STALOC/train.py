@@ -17,7 +17,8 @@ def get_max_index(vector):
     max_index=np.where(vector==np.max(vector))[0][0]
     return max_index
 
-def trans_plan_b(latent_A, latent_B, metric='correlation', reg=0.1, numItermax=10, device='cuda'):
+def trans_plan_b(latent_A, latent_B, metric='correlation', reg=0.1, numItermax=10, device='cpu'):
+
     cost = ot.dist(latent_A.detach().cpu().numpy(), latent_B.detach().cpu().numpy(), metric=metric)
     cost = torch.from_numpy(cost).float().to(device)
 
@@ -44,7 +45,7 @@ def trans_plan_b(latent_A, latent_B, metric='correlation', reg=0.1, numItermax=1
 
     return plan
 
-def rand_projections(embedding_dim, num_samples=50):
+def rand_projections(embedding_dim, num_samples=50, device='cpu'):
     """This function generates `num_samples` random samples from the latent space's unit sphere.
 
         Args:
@@ -54,10 +55,11 @@ def rand_projections(embedding_dim, num_samples=50):
         Return:
             torch.Tensor: tensor of size (num_samples, embedding_dim)
     """
+
     projections = [w / np.sqrt((w**2).sum())  # L2 normalization
                    for w in np.random.normal(size=(num_samples, embedding_dim))]
     projections = np.asarray(projections)
-    return torch.from_numpy(projections).type(torch.FloatTensor).cuda()
+    return torch.from_numpy(projections).type(torch.FloatTensor).to(device)
 
 
 def _sliced_wasserstein_distance(encoded_samples,
@@ -77,6 +79,7 @@ def _sliced_wasserstein_distance(encoded_samples,
         Return:
             torch.Tensor: tensor of wasserstrain distances of size (num_projections, 1)
     """
+
     # derive latent space dimension size from random samples drawn from latent prior distribution
     embedding_dim = distribution_samples.size(1)
     # generate random projections in latent space
@@ -99,11 +102,13 @@ def _sliced_wasserstein_distance(encoded_samples,
     return wasserstein_distance.mean()
 
 
-def sliced_wasserstein_distance(encoded_samples,
-                                transformed_samples,
-                                num_projections=50,
-                                p=2,
-                                device='cpu'):
+def sliced_wasserstein_distance(
+        encoded_samples,
+        transformed_samples,
+        num_projections=50,
+        p=2,
+        device='cpu'
+):
     """ Sliced Wasserstein Distance between encoded samples and drawn distribution samples.
 
         Args:
@@ -121,6 +126,5 @@ def sliced_wasserstein_distance(encoded_samples,
 
     # approximate mean wasserstein_distance between encoded and prior distributions
     # for each random projection
-    swd = _sliced_wasserstein_distance(encoded_samples, transformed_samples,
-                                       num_projections, p, device)
+    swd = _sliced_wasserstein_distance(encoded_samples, transformed_samples, num_projections, p, device)
     return swd
