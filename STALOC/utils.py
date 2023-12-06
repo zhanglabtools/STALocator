@@ -70,7 +70,7 @@ def find_parameters(adata_sc,
                     adata_ST,
                     resolution = "low",
                     cut_steps = 0.5,
-                    seed = 1234,
+                    seed_list = [1234],
                     hvg_num = 4000,
                     npcs = 30,
                     n_coord = 2,
@@ -92,44 +92,125 @@ def find_parameters(adata_sc,
                     train_adata = None,
                     train_spatial_obsm = "spatial",
                     train_label_obs = "celltype",
-                    pred_spatial_obsm = "map",
+                    pred_spatial_obsm = "loc",
                     true_label_obs = "celltype",
                     data_path = "data_parameter",
                     model_path = "models_parameter",
-                    result_path = "results_parameter"
+                    result_path = "results_parameter",
+                    verbose = False,
+                    device='cpu'
                     ):
 
     if resolution == "low":
 
-        df_results = pd.DataFrame(columns=['lambdacos', 'lambdaSWD', 'lambdarec', 'mixing_metric', 'clustering_metric'])
+        df_results = pd.DataFrame(columns=['seed', 'lambdacos', 'lambdaSWD', 'lambdarec', 'mixing_metric', 'clustering_metric'])
+        for seed in seed_list:
+            for lambdacos in lambdacos_list:
+                for lambdarec in lambdarec_list:
+                    for lambdaSWD in lambdaSWD_list:
+                        model = Model(
+                            resolution="low",
+                            batch_size=batch_size,
+                            train_epoch=train_epoch,
+                            cut_steps=cut_steps,
+                            seed=seed,
+                            sf_coord=sf_coord,
+                            rad_cutoff=rad_cutoff,
+                            lambdacos=lambdacos,
+                            lambdaSWD=lambdaSWD,
+                            lambdalat=lambdalat,
+                            lambdarec=lambdarec,
+                            data_path=data_path,
+                            model_path=model_path,
+                            result_path=result_path,
+                            ot=False,
+                            verbose=verbose,
+                            device=device
+                        )
 
-        for lambdacos in lambdacos_list:
-            for lambdarec in lambdarec_list:
+                        process_data_list = preprocess_dataset(
+                            adata_sc,
+                            adata_ST,
+                            hvg_num=hvg_num,
+                            npcs=npcs,
+                            n_coord=n_coord,
+                            sf_coord=sf_coord,
+                            location=location
+                        )
+                        model.emb_A = process_data_list[0]
+                        model.emb_B = process_data_list[1]
+                        model.coord_B = process_data_list[2]
+                        model.adata_total = process_data_list[3]
+                        model.adata_A_input = process_data_list[4]
+                        model.adata_B_input = process_data_list[5]
+                        model.train(metric=metric, reg=reg, numItermax=numItermax)
+                        model.eval()
+
+                        meta = pd.DataFrame(index=np.arange(model.emb_A.shape[0] + model.emb_B.shape[0]))
+                        meta["method"] = ["A"] * model.emb_A.shape[0] + ["B"] * model.emb_B.shape[0]
+                        mixing = calculate_mixing_metric(model.latent, meta, k=5, max_k=300, methods=list(set(meta.method)),
+                                                        subsample=mixingmetric_subsample)
+
+                        if label:
+                            train_data = np.array(train_adata.obsm[train_spatial_obsm])
+                            train_label = train_adata.obs[train_label_obs].astype("str")
+                            knn = KNeighborsClassifier(n_neighbors=k_cutoff)
+                            knn.fit(train_data, train_label)
+                            pred_data = np.array(model.adata_A_keep.obsm[pred_spatial_obsm])
+                            pred_label = knn.predict(pred_data)
+                            true_label = model.adata_A_keep.obs[true_label_obs]
+                            ari = adjusted_rand_score(true_label, pred_label)
+
+                            new_row = {
+                                'seed': seed,
+                                'lambdacos': lambdacos,
+                                'lambdaSWD': lambdaSWD,
+                                'lambdarec': lambdarec,
+                                'mixing_metric': mixing,
+                                'clustering_metric': ari,
+                            }
+
+                        elif not label:
+                            pred_data = np.array(model.adata_A_keep.obsm[pred_spatial_obsm])
+                            true_label = model.adata_A_keep.obs[true_label_obs]
+                            ssc = silhouette_score(pred_data, true_label)
+
+                            new_row = {
+                                'seed': seed,
+                                'lambdacos': lambdacos,
+                                'lambdaSWD': lambdaSWD,
+                                'lambdarec': lambdarec,
+                                'mixing_metric': mixing,
+                                'clustering_metric': ssc,
+                            }
+
+                        df_results = df_results.append(new_row, ignore_index=True)
+                        print("Test: seed=%d, lambdacos=%.1f, lambdaSWD=%.1f, lambdarec=%.1f"
+                              % (seed, lambdacos, lambdaSWD, lambdarec))
+
+    elif resolution == "high":
+
+        df_results = pd.DataFrame(columns=['seed','lambdacos', 'lambdaSWD', 'mixing_metric'])
+        for seed in seed_list:
+            for lambdacos in lambdacos_list:
                 for lambdaSWD in lambdaSWD_list:
-                    model = Model(resolution="low",
-                                  batch_size=batch_size,
-                                  train_epoch=train_epoch,
-                                  cut_steps=cut_steps,
-                                  seed=seed,
-                                  sf_coord=sf_coord,
-                                  rad_cutoff=rad_cutoff,
-                                  lambdacos=lambdacos,
-                                  lambdaSWD=lambdaSWD,
-                                  lambdalat=lambdalat,
-                                  lambdarec=lambdarec,
-                                  data_path=data_path,
-                                  model_path=model_path,
-                                  result_path=result_path)
-
-                    process_data_list = preprocess_dataset(
-                        adata_sc,
-                        adata_ST,
-                        hvg_num=hvg_num,
-                        npcs=npcs,
-                        n_coord=n_coord,
-                        sf_coord=sf_coord,
-                        location=location
+                    model = Model(
+                        resolution="high",
+                        batch_size=batch_size,
+                        train_epoch=train_epoch,
+                        cut_steps=1,
+                        seed=seed,
+                        rad_cutoff=rad_cutoff,
+                        lambdacos=lambdacos,
+                        lambdaSWD=lambdaSWD,
+                        data_path=data_path,
+                        model_path=model_path,
+                        result_path=result_path,
+                        verbose=verbose,
+                        device=device
                     )
+
+                    process_data_list = preprocess_dataset(adata_sc, adata_ST, hvg_num=4000)
                     model.emb_A = process_data_list[0]
                     model.emb_B = process_data_list[1]
                     model.coord_B = process_data_list[2]
@@ -144,80 +225,15 @@ def find_parameters(adata_sc,
                     mixing = calculate_mixing_metric(model.latent, meta, k=5, max_k=300, methods=list(set(meta.method)),
                                                      subsample=mixingmetric_subsample)
 
-                    if label:
-                        train_data = np.array(train_adata.obsm[train_spatial_obsm])
-                        train_label = train_adata.obs[train_label_obs].astype("str")
-                        knn = KNeighborsClassifier(n_neighbors=k_cutoff)
-                        knn.fit(train_data, train_label)
-                        pred_data = np.array(model.adata_A_keep.obsm[pred_spatial_obsm])
-                        pred_label = knn.predict(pred_data)
-                        true_label = model.adata_A_keep.obs[true_label_obs]
-                        ari = adjusted_rand_score(true_label, pred_label)
-
-                        new_row = {
-                            'lambdacos': lambdacos,
-                            'lambdaSWD': lambdaSWD,
-                            'lambdarec': lambdarec,
-                            'mixing_metric': mixing,
-                            'clustering_metric': ari,
-                        }
-
-                    elif not label:
-                        pred_data = np.array(model.adata_A_keep.obsm[pred_spatial_obsm])
-                        true_label = model.adata_A_keep.obs[true_label_obs]
-                        ssc = silhouette_score(pred_data, true_label)
-
-                        new_row = {
-                            'lambdacos': lambdacos,
-                            'lambdaSWD': lambdaSWD,
-                            'lambdarec': lambdarec,
-                            'mixing_metric': mixing,
-                            'clustering_metric': ssc,
-                        }
+                    new_row = {
+                        'seed': seed,
+                        'lambdacos': lambdacos,
+                        'lambdaSWD': lambdaSWD,
+                        'mixing_metric': mixing,
+                    }
 
                     df_results = df_results.append(new_row, ignore_index=True)
-
-    elif resolution == "high":
-
-        df_results = pd.DataFrame(columns=['lambdacos', 'lambdaSWD', 'mixing_metric'])
-
-        for lambdacos in lambdacos_list:
-            for lambdaSWD in lambdaSWD_list:
-                model = Model(resolution="high",
-                              batch_size=batch_size,
-                              train_epoch=train_epoch,
-                              cut_steps=1,
-                              seed=seed,
-                              rad_cutoff=rad_cutoff,
-                              lambdacos=lambdacos,
-                              lambdaSWD=lambdaSWD,
-                              data_path=data_path,
-                              model_path=model_path,
-                              result_path=result_path)
-
-                process_data_list = preprocess_dataset(adata_sc, adata_ST, hvg_num=4000)
-                model.emb_A = process_data_list[0]
-                model.emb_B = process_data_list[1]
-                model.coord_B = process_data_list[2]
-                model.adata_total = process_data_list[3]
-                model.adata_A_input = process_data_list[4]
-                model.adata_B_input = process_data_list[5]
-                model.train(metric=metric, reg=reg, numItermax=numItermax)
-                model.eval()
-
-                meta = pd.DataFrame(index=np.arange(model.emb_A.shape[0] + model.emb_B.shape[0]))
-                meta["method"] = ["A"] * model.emb_A.shape[0] + ["B"] * model.emb_B.shape[0]
-                mixing = calculate_mixing_metric(model.latent, meta, k=5, max_k=300, methods=list(set(meta.method)),
-                                                 subsample=mixingmetric_subsample)
-
-                new_row = {
-                    'lambdacos': lambdacos,
-                    'lambdaSWD': lambdaSWD,
-                    'mixing_metric': mixing,
-                }
-
-                df_results = df_results.append(new_row, ignore_index=True)
-
+                    print("Test: seed=%d, lambdacos=%.1f, lambdaSWD=%.1f" % (seed, lambdacos, lambdaSWD))
 
     return df_results
 
