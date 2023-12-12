@@ -20,12 +20,32 @@ from STALOC.networks import *
 from STALOC.train import *
 
 class Model(object):
-    def __init__(self, resolution = "low", batch_size = 500, train_epoch = 5000, cut_steps = 0.4, seed = 1234,
-                 npcs = 30, n_latent = 20, n_coord = 2, sf_coord = 12000, location = "spatial", rad_cutoff = None,
-                 lambdaGAN = 1.0, lambdacos = 20.0, lambdaAE = 10.0, lambdaLA = 10.0, lambdaSWD = 50.0,
-                 lambdalat = 1.0, lambdarec = 0.01,
-                 model_path = "models", data_path = "data", result_path = "results",
-                 ot = True, verbose = True, device="cpu"):
+    def __init__(self,
+                 resolution = "low", # Resolution of ST dataset.
+                 batch_size = 500, # Batch size.
+                 train_epoch = 5000, # Epochs.
+                 cut_steps = 0.5, # Switch location between integration network and localization network training.
+                 seed = 1234, # Random seed.
+                 npcs = 30, # Number of top PCs.
+                 n_latent = 20, # Dimension of shared latent space on integration network.
+                 n_coord = 2, # Dimension of spatial location.
+                 sf_coord = 12000, # scaling factor of spatial location.
+                 location = "spatial", # storing location of spatial location.
+                 rad_cutoff = None, # The distance of the location cell from the nearest spot is used to filter out cells located outside the tissue section.
+                 lambdaGAN = 1.0, # The weight of adversarial learning loss on integration network.
+                 lambdacos = 20.0, # The weight of cosine similarity on integration network.
+                 lambdaAE = 10.0, # The weight of auto-encoder consistency on integration network.
+                 lambdaLA = 10.0, # The weight of latent alignment loss on integration network.
+                 lambdaSWD = 5.0, # The weight of sliced Wasserstein distance on integration network.
+                 lambdalat = 1.0, # The weight of spatial location fitting loss on localization network.
+                 lambdarec = 0.01, # The weight of reconstruction loss on localization network.
+                 model_path = "models", # Model save path.
+                 data_path = "data", # Data save path.
+                 result_path = "results", # Result save path.
+                 ot = True, # Whether to perform minibatch optimal transport.
+                 verbose = True, # Whether to print running information.
+                 device = "cpu" # The device of model running. Specific graphic card should be specified if use GPU.
+                 ):
 
         # set random seed
         torch.manual_seed(seed)
@@ -75,10 +95,10 @@ class Model(object):
         self.device = device
 
     def preprocess(self,
-                   adata_A_input, # anndata object of scRNA-seq data
-                   adata_B_input, # anndata object of ST data
-                   hvg_num=4000, # number of highly variable genes for each anndata
-                   save_embedding=False # save low-dimensional embeddings or not
+                   adata_A_input, # Anndata object of scRNA-seq data
+                   adata_B_input, # Anndata object of ST data
+                   hvg_num = 4000, # Number of highly variable genes for each anndata
+                   save_embedding = False # Save low-dimensional embeddings or not
                    ):
 
         adata_A_input.obs["batch"] = "scRNA-seq"
@@ -93,7 +113,9 @@ class Model(object):
         sc.pp.highly_variable_genes(adata_B, flavor='seurat_v3', n_top_genes=hvg_num)
         hvg_A = adata_A.var[adata_A.var.highly_variable == True].sort_values(by="highly_variable_rank").index
         hvg_B = adata_B.var[adata_B.var.highly_variable == True].sort_values(by="highly_variable_rank").index
-        hvg_total = hvg_A & hvg_B
+        # hvg_total = hvg_A & hvg_B
+        # hvg_total = list(set(hvg_A) & set(hvg_B))
+        hvg_total = hvg_A.intersection(hvg_B)
         if len(hvg_total) < 100:
             raise ValueError("The total number of highly variable genes is smaller than 100 (%d). Try to set a larger hvg_num." % len(hvg_total))
 
@@ -130,7 +152,12 @@ class Model(object):
             np.save(os.path.join(self.data_path, "lowdim_A.npy"), self.emb_A)
             np.save(os.path.join(self.data_path, "lowdim_B.npy"), self.emb_B)
 
-    def train(self, num_projections=500, metric='correlation', reg=0.1, numItermax=10):
+    def train(self,
+              num_projections = 500, # The same as sliced_wasserstein_distance function and _sliced_wasserstein_distance function.
+              metric = 'correlation', # The same as trans_plan_b function.
+              reg = 0.1, # The same as trans_plan_b function.
+              numItermax = 10 # The same as trans_plan_b function.
+              ):
         begin_time = time.time()
         if self.verbose:
             print("Begining time: ", time.asctime(time.localtime(begin_time)))
@@ -277,7 +304,12 @@ class Model(object):
         torch.save(state, os.path.join(self.model_path, "ckpt.pth"))
 
 
-    def eval(self, D_score=False, save_embedding=False, hvg_num=4000, retain_prop=1):
+    def eval(self,
+             D_score = False, # Whether to output discriminated score.
+             save_embedding = False, # Save low-dimensional embeddings or not.
+             hvg_num = 4000, # Number of highly variable genes for each anndata.
+             retain_prop = 1 # The proportion of cells mapped for each sample of ST dataset when data enhancement of extension.
+             ):
         self.E_A = encoder(self.npcs, self.n_latent).to(self.device)
         self.E_B = encoder(self.npcs, self.n_latent).to(self.device)
         self.G_A = generator(self.npcs, self.n_latent).to(self.device)

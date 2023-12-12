@@ -39,7 +39,9 @@ def preprocess_dataset(adata_A_used,
     sc.pp.highly_variable_genes(adata_B, flavor='seurat_v3', n_top_genes=hvg_num)
     hvg_A = adata_A.var[adata_A.var.highly_variable == True].sort_values(by="highly_variable_rank").index
     hvg_B = adata_B.var[adata_B.var.highly_variable == True].sort_values(by="highly_variable_rank").index
-    hvg_total = hvg_A & hvg_B
+    # hvg_total = hvg_A & hvg_B
+    # hvg_total = list(set(hvg_A) & set(hvg_B))
+    hvg_total = hvg_A.intersection(hvg_B)
 
     sc.pp.normalize_total(adata_A, target_sum=1e4)
     sc.pp.log1p(adata_A)
