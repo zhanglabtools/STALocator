@@ -32,17 +32,31 @@ acquisition of genome-wide ST data, addressing this limitation effectively.
 ![](./STALOC_overview.png)
 
 ## Prerequisites
-It is recommended to use a Python version between `3.7` and `3.9`.
+It is recommended to use a Python version between `3.7` and `3.9`, and a R version above `4.2`.
 
 ## Software dependencies
+The important Python packages used to run the model are as follows: 
+```
 scanpy>=1.8.2,<=1.9.6
-
 torch>=1.8.0,<=1.13.0
-
 torchvision>=0.9.0,<=1.14.0
-
+POT==0.9.0
+```
 In addition, if you choose to use GPU, the versions of torch and torchvision 
 need to be compatible with the version of CUDA.
+
+The important R packages used to process data and perform enrichment analysis are as follows:
+```
+Seurat==4.2
+SeuratData==0.2
+GSEABase==1.60
+DOSE==3.24
+fgsea==1.24
+clusterProfiler==4.6
+org.Mm.eg.db==3.16
+AnnotationDbi==1.60
+```
+
 
 ## Installation
 After download STALOC from [Github](https://github.com/zhanglabtools/STALOC), you can install STALOC via
@@ -51,8 +65,11 @@ cd STALOC-main
 python setup.py build
 python setup.py install
 ```
-In addition, if you choose to install STALOC in a virtual environment, 
-you must install the imageio and igraph packages first. 
+In addtion, if you choose to install STALOC in a virtual environment, 
+you should install the imageio and igraph packages first. 
+
+And if you choose to use R in jupyter notebook, 
+you should install the R kernel in jupyter notebook first. 
 
 ## Tutorials
 The following are detailed tutorials. Some related additional files can be downloaded [here](https://drive.google.com/drive/folders/1LX6hlI1gWtflLbl-hkghAtUu0aQG95Gi).
