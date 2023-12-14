@@ -21,7 +21,7 @@ from STALOC.train import *
 
 class Model(object):
     def __init__(self,
-                 resolution = "low", # Resolution of ST dataset.
+                 resolution = "low", # Resolution of ST dataset. Available options are: "low" and "high".
                  batch_size = 500, # Batch size.
                  train_epoch = 5000, # Epochs.
                  cut_steps = 0.5, # Switch location between integration network and localization network training.
@@ -42,8 +42,8 @@ class Model(object):
                  model_path = "models", # Model save path.
                  data_path = "data", # Data save path.
                  result_path = "results", # Result save path.
-                 ot = True, # Whether to perform minibatch optimal transport.
-                 verbose = True, # Whether to print running information.
+                 ot = True, # Whether to perform minibatch optimal transport. Available options are: True and False.
+                 verbose = True, # Whether to print running information. Available options are: True and False.
                  device = "cpu" # The device of model running. Specific graphic card should be specified if use GPU.
                  ):
 
