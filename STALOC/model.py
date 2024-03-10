@@ -16,8 +16,8 @@ import scipy.sparse as sp
 from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
-from STALOC.networks import *
-from STALOC.train import *
+from STALocator.networks import *
+from STALocator.train import *
 
 class Model(object):
     def __init__(self,
