@@ -7,7 +7,7 @@ import scanpy as sc
 import pandas as pd
 import anndata
 import umap
-from STALOC.model import *
+from STALocator.model import *
 from sklearn.metrics import normalized_mutual_info_score as NMI
 from sklearn.metrics import f1_score
 from sklearn.metrics import adjusted_rand_score
